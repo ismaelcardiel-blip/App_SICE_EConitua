@@ -12,12 +12,23 @@ def conectar_google_sheets():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         
-        # Accedemos directamente al diccionario que Streamlit crea desde el TOML
+        # 1. Cargamos el diccionario desde los secrets
         creds_dict = dict(st.secrets["gcp_service_account"])
         
-        # Importante: Streamlit a veces escapa los saltos de línea de la llave, los limpiamos
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        # 2. LIMPIEZA EXTREMA de la llave privada
+        # Esto quita espacios accidentales y asegura que los saltos de línea sean reales
+        raw_key = creds_dict["private_key"]
         
+        # Primero quitamos espacios al inicio y fin
+        clean_key = raw_key.strip()
+        
+        # Si Streamlit guardó los \n como texto literal, los convertimos a saltos reales
+        if "\\n" in clean_key:
+            clean_key = clean_key.replace("\\n", "\n")
+            
+        creds_dict["private_key"] = clean_key
+        
+        # 3. Autorizar
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
         return client.open("SICE_Base_Maestra").sheet1
