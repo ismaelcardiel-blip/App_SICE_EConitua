@@ -5,7 +5,7 @@ import re
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Sistema de Información Concentrada y Estadística (SICE) EContinua", layout="wide")
+st.set_page_config(page_title="Sistema de Integrado de Control Estadístico (SICE) EContinua", layout="wide")
 
 # --- CONEXIÓN A GOOGLE (MODIFICADA PARA NUBE) ---
 def conectar_google_sheets():
@@ -112,7 +112,7 @@ def lavanderia_v55(df, nombre_archivo, p_manual, f_manual):
     return res.fillna("S/I").replace(['nan', 'NaN', 'None', 'nanb', ''], "S/I")
 
 # --- INTERFAZ ---
-st.title("🏛️ Sistema de Información Concentrada y Estadística (SICE) EContinua")
+st.title("🏛️ Sistema de Integrado de Control Estadístico (SICE) EContinua")
 st.sidebar.header("Opciones")
 p_mod = st.sidebar.radio("Programa:", ["Auto", "Manual"])
 p_val = st.sidebar.text_input("Nombre curso:") if p_mod == "Manual" else ""
@@ -128,7 +128,7 @@ if archivo:
         
         st.dataframe(df_out, use_container_width=True)
         
-        if st.button("🚀 Enviar a Google Sheets"):
+        if st.button("🚀 Enviar a la Base Maestra"):
             with st.spinner("Subiendo..."):
                 hoja = conectar_google_sheets()
                 if hoja:
