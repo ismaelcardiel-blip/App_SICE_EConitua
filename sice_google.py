@@ -5,7 +5,7 @@ import re
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="SICE v5.5 Cloud", layout="wide")
+st.set_page_config(page_title="Sistema de Información Concentrada y Estadística (SICE) EContinua", layout="wide")
 
 # --- CONEXIÓN A GOOGLE (MODIFICADA PARA NUBE) ---
 def conectar_google_sheets():
