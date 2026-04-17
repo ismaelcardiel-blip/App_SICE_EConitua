@@ -5,17 +5,21 @@ import re
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="SICE v5.5", layout="wide")
+st.set_page_config(page_title="SICE v5.5 Cloud", layout="wide")
 
-# --- CONEXIÓN A GOOGLE ---
+# --- CONEXIÓN A GOOGLE (MODIFICADA PARA NUBE) ---
 def conectar_google_sheets():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        nombre_json = "validador-tabulados-f0d5525b05fb.json" 
-        creds = ServiceAccountCredentials.from_json_keyfile_name(nombre_json, scope)
+        
+        # Leemos las credenciales desde los Secrets de Streamlit (sin archivos JSON)
+        creds_dict = st.secrets["gcp_service_account"]
+        
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
         return client.open("SICE_Base_Maestra").sheet1
-    except:
+    except Exception as e:
+        st.error(f"Error de conexión: {e}. Revisa los Secrets en Streamlit Cloud.")
         return None
 
 # --- MOTOR DE EDAD REGLA DE ORO (v5.5) ---
@@ -25,17 +29,14 @@ def procesar_edad_v55(valor):
     
     v_str = str(valor).strip().upper()
     try:
-        # Extraer todos los números
         numeros = re.findall(r'\d+', v_str)
         if not numeros: return "S/I"
         
-        # Si detecta un año (ej. 1995), hace la conversión
         for num in numeros:
             n = int(num)
             if 1920 <= n <= 2026:
                 if n > 100: return 2026 - n
         
-        # Si es un número solo (ej. 30), es la edad directa
         for num in numeros:
             n = int(num)
             if 10 <= n <= 100: return n
@@ -55,7 +56,6 @@ def generar_clave_curso(nombre_curso):
 
 # --- LAVANDERÍA v5.5 (SIN DUPLICADOS) ---
 def lavanderia_v55(df, nombre_archivo, p_manual, f_manual):
-    # Definimos los sinónimos
     mapeo = {
         'Nombre': ['nombre', 'participante', 'alumno'],
         'Sexo': ['sexo', 'género', 'genero'],
@@ -70,7 +70,6 @@ def lavanderia_v55(df, nombre_archivo, p_manual, f_manual):
     for estandar, sinonimos in mapeo.items():
         col_encontrada = None
         for s in sinonimos:
-            # Filtro estricto para no confundir Edad con Antigüedad
             col_encontrada = next((c for c in df.columns if s in str(c).lower() 
                                   and "registro" not in str(c).lower()
                                   and "antigüedad" not in str(c).lower()
@@ -79,10 +78,7 @@ def lavanderia_v55(df, nombre_archivo, p_manual, f_manual):
         
         temp_df[estandar] = df[col_encontrada] if col_encontrada else "S/I"
 
-    # Definir Convocatoria
     temp_df['Convocatoria'] = p_manual if p_manual else temp_df['Programa_Archivo'].replace("S/I", "General")
-
-    # Folio 2026 con reinicio por grupo
     temp_df['count'] = temp_df.groupby('Convocatoria').cumcount() + 1
     
     folios = []
@@ -96,14 +92,13 @@ def lavanderia_v55(df, nombre_archivo, p_manual, f_manual):
     temp_df['Sexo_Final'] = temp_df['Sexo'].apply(lambda v: 'Mujer' if 'fem' in str(v).lower() or 'muj' in str(v).lower() else ('Hombre' if 'masc' in str(v).lower() or 'hom' in str(v).lower() else 'S/I'))
     temp_df['Fuente_Origen'] = nombre_archivo
 
-    # --- LISTA DE COLUMNAS CORREGIDA (SIN DUPLICADOS) ---
     cols_finales = ['Folio', 'Año', 'Convocatoria', 'Nombre', 'Sexo_Final', 'Edad_Final', 'Regional', 'Correo', 'Fuente_Origen']
     res = temp_df[cols_finales].rename(columns={'Sexo_Final': 'Sexo', 'Edad_Final': 'Edad'})
     
     return res.fillna("S/I").replace(['nan', 'NaN', 'None', 'nanb', ''], "S/I")
 
 # --- INTERFAZ ---
-st.title("🏛️ SICE v5.5: El Validador Final")
+st.title("🏛️ SICE v5.5 Cloud")
 st.sidebar.header("Opciones")
 p_mod = st.sidebar.radio("Programa:", ["Auto", "Manual"])
 p_val = st.sidebar.text_input("Nombre curso:") if p_mod == "Manual" else ""
