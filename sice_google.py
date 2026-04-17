@@ -8,18 +8,21 @@ from oauth2client.service_account import ServiceAccountCredentials
 st.set_page_config(page_title="SICE v5.5 Cloud", layout="wide")
 
 # --- CONEXIÓN A GOOGLE (MODIFICADA PARA NUBE) ---
+import json # Asegúrate de tener este import arriba
+
 def conectar_google_sheets():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         
-        # Leemos las credenciales desde los Secrets de Streamlit (sin archivos JSON)
-        creds_dict = st.secrets["gcp_service_account"]
+        # Leemos el string largo y lo convertimos a diccionario de Python
+        info_json = st.secrets["gcp_service_account"]["json_data"]
+        creds_dict = json.loads(info_json)
         
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
         return client.open("SICE_Base_Maestra").sheet1
     except Exception as e:
-        st.error(f"Error de conexión: {e}. Revisa los Secrets en Streamlit Cloud.")
+        st.error(f"Error de conexión: {e}")
         return None
 
 # --- MOTOR DE EDAD REGLA DE ORO (v5.5) ---
