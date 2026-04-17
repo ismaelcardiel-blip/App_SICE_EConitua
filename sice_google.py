@@ -8,15 +8,15 @@ from oauth2client.service_account import ServiceAccountCredentials
 st.set_page_config(page_title="SICE v5.5 Cloud", layout="wide")
 
 # --- CONEXIÓN A GOOGLE (MODIFICADA PARA NUBE) ---
-import json # Asegúrate de tener este import arriba
-
 def conectar_google_sheets():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         
-        # Leemos el string largo y lo convertimos a diccionario de Python
-        info_json = st.secrets["gcp_service_account"]["json_data"]
-        creds_dict = json.loads(info_json)
+        # Accedemos directamente al diccionario que Streamlit crea desde el TOML
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        
+        # Importante: Streamlit a veces escapa los saltos de línea de la llave, los limpiamos
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
         
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
