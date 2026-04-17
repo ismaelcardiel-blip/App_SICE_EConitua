@@ -112,7 +112,7 @@ def lavanderia_v55(df, nombre_archivo, p_manual, f_manual):
     return res.fillna("S/I").replace(['nan', 'NaN', 'None', 'nanb', ''], "S/I")
 
 # --- INTERFAZ ---
-st.title("🏛️ SICE v5.5 Cloud")
+st.title("🏛️ Sistema de Información Concentrada y Estadística (SICE) EContinua")
 st.sidebar.header("Opciones")
 p_mod = st.sidebar.radio("Programa:", ["Auto", "Manual"])
 p_val = st.sidebar.text_input("Nombre curso:") if p_mod == "Manual" else ""
