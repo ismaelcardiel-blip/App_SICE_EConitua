@@ -207,8 +207,8 @@ if archivo:
         
         # 2. Corrección selectiva: Forzamos la nomenclatura exacta
         columnas_mapeo = {
-            "convocatoria_sice": "Convocatoria_SICE",
-            "CONVOCATORIA_SICE": "Convocatoria_SICE",
+            "programa": "Programa",
+            "PROGRAMA": "Programa",
             "codigo_ec": "Código EC",
             "CÓDIGO_EC": "Código EC",
             "Código_EC": "Código EC"
@@ -224,7 +224,7 @@ if archivo:
     st.dataframe(df_nuevo, use_container_width=True, hide_index=True)
 
     # Verificar columnas mínimas obligatorias
-    cols_faltantes = [c for c in ["Código EC", "Convocatoria_SICE"] if c not in df_nuevo.columns]
+    cols_faltantes = [c for c in ["Código EC", "Programa"] if c not in df_nuevo.columns]
     if cols_faltantes:
         st.error(f"❌ El archivo no tiene las columnas requeridas: {cols_faltantes}")
         st.stop()
