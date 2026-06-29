@@ -207,7 +207,7 @@ with st.spinner("Leyendo base de datos en Google Sheets..."):
 
 # Despliegue de la base ya estandarizada
 st.subheader("📋 Base de datos actual (Estandarizada)")
-st.caption(f"{len(df_sheets):?} registros activos en Google Sheets")
+st.caption(f"{len(df_sheets):,} registros activos en Google Sheets")
 st.dataframe(df_sheets, use_container_width=True, hide_index=True)
 
 st.divider()
