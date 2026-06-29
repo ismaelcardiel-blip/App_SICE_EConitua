@@ -175,25 +175,25 @@ client = conectar_google_sheets()
 with st.spinner("Leyendo base de datos en Google Sheets..."):
     df_sheets = cargar_hoja(client, spreadsheet_id, nombre_hoja)
     
-    # Normalización inmediata defensiva si contiene registros
     if df_sheets is not None and not df_sheets.empty:
-        # 1. Limpieza Regex estricta sobre las columnas (remueve espacios dobles y saltos de línea invisibles)
+        # 1. Limpieza inicial de espacios ocultos
         df_sheets.columns = [re.sub(r'\s+', ' ', str(col)).strip() for col in df_sheets.columns]
         
-        # 2. Mapeo explícito por texto literal común
-        columnas_mapeo_sheets = {
-            "Codigo EC": "Código EC",
-            "codigo_ec": "Código EC",
-            "Código_EC": "Código EC",
-            "convocatoria_sice": "Programa",
-            "Convocatoria_SICE": "Programa",
-            "Convocatoria SICE": "Programa",
-            "programa": "Programa",
-            "Fecha de Inscripcion": "Fecha de Inscripción",
-            "fecha_de_inscripcion": "Fecha de Inscripción",
-            "fecha_de_inscripción": "Fecha de Inscripción"
-        }
-        df_sheets.rename(columns=columnas_mapeo_sheets, inplace=True)
+        # 2. Bucle inteligente: Evita renombrar si la columna destino ya existe
+        nuevas_columnas = []
+        for col in df_sheets.columns:
+            col_min = col.lower()
+            
+            if ("codigo" in col_min or "código" in col_min) and "Código EC" not in nuevas_columnas:
+                nuevas_columnas.append("Código EC")
+            elif ("programa" in col_min or "convocatoria" in col_min) and "Programa" not in nuevas_columnas:
+                nuevas_columnas.append("Programa")
+            elif "fecha" in col_min and ("inscrip" in col_min or "ingreso" in col_min) and "Fecha de Inscripción" not in nuevas_columnas:
+                nuevas_columnas.append("Fecha de Inscripción")
+            else:
+                nuevas_columnas.append(col) # Si no aplica o ya existe el destino, conserva el original
+                
+        df_sheets.columns = nuevas_columnas
         
         # 3. Mapeo inteligente por sub-palabras clave si aún fallase la detección exacta
         for col in df_sheets.columns:
