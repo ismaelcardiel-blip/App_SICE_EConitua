@@ -175,14 +175,14 @@ client = conectar_google_sheets()
 with st.spinner("Leyendo base de datos en Google Sheets..."):
     df_sheets = cargar_hoja(client, spreadsheet_id, nombre_hoja)
     
-    # ── AUDITORÍA DE COLUMNAS (Para ver qué está leyendo Python realmente) ──
+    # ── DIAGNÓSTICO DE FUERZA BRUTA ──
     if df_sheets is not None and not df_sheets.empty:
-        # Imprime temporalmente las columnas originales para que descubramos el error visualmente
-        st.info(f"🔍 Columnas detectadas originalmente en la pestaña '{nombre_hoja}':")
-        st.json(list(df_sheets.columns))
+        # Mostramos en la app de Streamlit exactamente las columnas para auditar
+        st.write("### 🔍 Depuración en vivo de Google Sheets")
+        st.write("Columnas crudas encontradas en la pestaña:", list(df_sheets.columns))
+        st.write("Primera fila de datos para validar contenido:", df_sheets.head(1).to_dict(orient='records'))
         
-        # ── LIMPIEZA REGEX ULTRA-AGRESIVA ──
-        # Reemplaza saltos de línea, tabulaciones y múltiples espacios por un solo espacio estándar
+        # Limpieza estricta de caracteres invisibles
         df_sheets.columns = [re.sub(r'\s+', ' ', str(col)).strip() for col in df_sheets.columns]
         
         columnas_mapeo_sheets = {
@@ -198,6 +198,16 @@ with st.spinner("Leyendo base de datos en Google Sheets..."):
             "fecha_de_inscripción": "Fecha de Inscripción"
         }
         df_sheets.rename(columns=columnas_mapeo_sheets, inplace=True)
+        
+        # Si después del mapeo aún no se llaman como queremos, las renombramos por posición
+        # Asumiendo un orden lógico si el mapeo por texto falla por caracteres extraños
+        for col in df_sheets.columns:
+            if "codigo" in col.lower() or "código" in col.lower():
+                df_sheets.rename(columns={col: "Código EC"}, inplace=True)
+            if "programa" in col.lower() or "convocatoria" in col.lower():
+                df_sheets.rename(columns={col: "Programa"}, inplace=True)
+            if "fecha" in col.lower() and "inscrip" in col.lower():
+                df_sheets.rename(columns={col: "Fecha de Inscripción"}, inplace=True)
 
 st.subheader("📋 Base de datos actual (Estandarizada)")
 st.caption(f"{len(df_sheets):,} registros activos en Google Sheets")
