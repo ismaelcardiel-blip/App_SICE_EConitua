@@ -196,39 +196,75 @@ if archivo:
         else:
             df_nuevo = pd.read_excel(archivo, engine="openpyxl")
         
-       # ── Cargar y normalizar datos de Google Sheets ──
+# ─────────────────────────────────────────────
+# CARGA DE DATOS DESDE GOOGLE SHEETS
+# ─────────────────────────────────────────────
 client = conectar_google_sheets()
 
 with st.spinner("Leyendo base de datos en Google Sheets..."):
     df_sheets = cargar_hoja(client, spreadsheet_id, nombre_hoja)
     
-   # ── Cargar y normalizar datos de Google Sheets ──
-try:
-    client = conectar_google_sheets()
+    # Limpieza defensiva para las columnas que vienen de Google Sheets
+    if df_sheets is not None and not df_sheets.empty:
+        df_sheets.columns = df_sheets.columns.astype(str).str.strip()
+        columnas_mapeo_sheets = {
+            "Codigo EC": "Código EC",
+            "codigo_ec": "Código EC",
+            "Código_EC": "Código EC",
+            "convocatoria_sice": "Programa",
+            "Convocatoria_SICE": "Programa",
+            "Convocatoria SICE": "Programa",
+            "programa": "Programa",
+            "Fecha de Inscripcion": "Fecha de Inscripción",
+            "fecha_de_inscripcion": "Fecha de Inscripción"
+        }
+        df_sheets.rename(columns=columnas_mapeo_sheets, inplace=True)
 
-    with st.spinner("Leyendo base de datos en Google Sheets..."):
-        df_sheets = cargar_hoja(client, spreadsheet_id, nombre_hoja)
+st.subheader("📋 Base de datos actual (Estandarizada)")
+st.caption(f"{len(df_sheets):,} registros activos en Google Sheets")
+st.dataframe(df_sheets, use_container_width=True, hide_index=True)
+
+st.divider()
+
+# ─────────────────────────────────────────────
+# CARGA DEL ARCHIVO NUEVO (USUARIO)
+# ─────────────────────────────────────────────
+st.subheader("📂 Cargar nuevos participantes")
+archivo = st.file_uploader("Sube un archivo Excel (.xlsx) o CSV (.csv)", type=["xlsx", "csv"])
+
+if archivo:
+    try:
+        if archivo.name.endswith(".csv"):
+            df_nuevo = pd.read_csv(archivo)
+        else:
+            df_nuevo = pd.read_excel(archivo, engine="openpyxl")
         
-        # ── LIMPIEZA ULTRA-DEFENSIVA PARA GOOGLE SHEETS ──
-        if df_sheets is not None and not df_sheets.empty:
-            df_sheets.columns = df_sheets.columns.astype(str).str.strip()
-            
-            columnas_mapeo_sheets = {
-                "Codigo EC": "Código EC",
-                "codigo_ec": "Código EC",
-                "Código_EC": "Código EC",
-                "convocatoria_sice": "Programa",
-                "Convocatoria_SICE": "Programa",
-                "Convocatoria SICE": "Programa",
-                "programa": "Programa",
-                "Fecha de Inscripcion": "Fecha de Inscripción",
-                "fecha_de_inscripcion": "Fecha de Inscripción"
-            }
-            df_sheets.rename(columns=columnas_mapeo_sheets, inplace=True)
+        # Limpieza de las columnas del archivo subido
+        df_nuevo.columns = df_nuevo.columns.astype(str).str.strip()
+        
+        columnas_mapeo_nuevo = {
+            "codigo_ec": "Código EC",
+            "Código_EC": "Código EC",
+            "CÓDIGO_EC": "Código EC",
+            "programa": "Programa",
+            "PROGRAMA": "Programa",
+            "convocatoria_sice": "Programa",
+            "Convocatoria_SICE": "Programa",
+            "Convocatoria SICE": "Programa",
+            "fecha_de_inscripcion": "Fecha de Inscripción",
+            "fecha_de_inscripción": "Fecha de Inscripción",
+            "Fecha de Inscripcion": "Fecha de Inscripción",
+            "FECHA DE INSCRIPCIÓN": "Fecha de Inscripción"
+        }
+        df_nuevo.rename(columns=columnas_mapeo_nuevo, inplace=True)
 
-except Exception as e:
-    st.error(f"❌ Error al inicializar la base de datos: {e}")
-    st.stop()
+    except Exception as e:
+        st.error(f"❌ No se pudo leer el archivo cargado: {e}")
+        st.code(traceback.format_exc())
+        st.stop()
+
+    st.write(f"**Vista previa del archivo cargado** — {len(df_nuevo):,} filas detectadas")
+    st.dataframe(df_nuevo, use_container_width=True, hide_index=True)
 
     st.write(f"**Vista previa del archivo** — {len(df_nuevo):,} filas")
     st.dataframe(df_nuevo, use_container_width=True, hide_index=True)
