@@ -84,7 +84,7 @@ def aplicar_upsert_maestro(df_google_sheets, df_nuevos_datos):
     Motor UPSERT por clave compuesta ternaria (Año-Mes): Código EC + Programa + Periodo Mensual.
     Retorna: (df_final, contador_nuevos, contador_actualizados)
     """
-    # Verificación de columnas obligatorias estandarizadas
+    # Verificación estricta en el momento de procesar la lógica de negocio
     COLS_REQUERIDAS = ["Código EC", "Programa", "Fecha de Inscripción"]
 
     for col in COLS_REQUERIDAS:
@@ -169,22 +169,18 @@ if not spreadsheet_id:
     st.info("👈 Ingresa el ID de tu Google Sheet en el panel lateral para comenzar.")
     st.stop()
 
-# ── Cargar datos actuales de Sheets y Normalizar ──
+# ── CONTROL DE FLUJO CENTRAL: CARGAR Y NORMALIZAR GOOGLE SHEETS ──
 client = conectar_google_sheets()
 
 with st.spinner("Leyendo base de datos en Google Sheets..."):
     df_sheets = cargar_hoja(client, spreadsheet_id, nombre_hoja)
     
-    # ── DIAGNÓSTICO DE FUERZA BRUTA ──
+    # Normalización inmediata defensiva si contiene registros
     if df_sheets is not None and not df_sheets.empty:
-        # Mostramos en la app de Streamlit exactamente las columnas para auditar
-        st.write("### 🔍 Depuración en vivo de Google Sheets")
-        st.write("Columnas crudas encontradas en la pestaña:", list(df_sheets.columns))
-        st.write("Primera fila de datos para validar contenido:", df_sheets.head(1).to_dict(orient='records'))
-        
-        # Limpieza estricta de caracteres invisibles
+        # 1. Limpieza Regex estricta sobre las columnas (remueve espacios dobles y saltos de línea invisibles)
         df_sheets.columns = [re.sub(r'\s+', ' ', str(col)).strip() for col in df_sheets.columns]
         
+        # 2. Mapeo explícito por texto literal común
         columnas_mapeo_sheets = {
             "Codigo EC": "Código EC",
             "codigo_ec": "Código EC",
@@ -199,23 +195,24 @@ with st.spinner("Leyendo base de datos en Google Sheets..."):
         }
         df_sheets.rename(columns=columnas_mapeo_sheets, inplace=True)
         
-        # Si después del mapeo aún no se llaman como queremos, las renombramos por posición
-        # Asumiendo un orden lógico si el mapeo por texto falla por caracteres extraños
+        # 3. Mapeo inteligente por sub-palabras clave si aún fallase la detección exacta
         for col in df_sheets.columns:
-            if "codigo" in col.lower() or "código" in col.lower():
+            col_min = col.lower()
+            if "codigo" in col_min or "código" in col_min:
                 df_sheets.rename(columns={col: "Código EC"}, inplace=True)
-            if "programa" in col.lower() or "convocatoria" in col.lower():
+            elif "programa" in col_min or "convocatoria" in col_min:
                 df_sheets.rename(columns={col: "Programa"}, inplace=True)
-            if "fecha" in col.lower() and "inscrip" in col.lower():
+            elif "fecha" in col_min and ("inscrip" in col_min or "ingreso" in col_min):
                 df_sheets.rename(columns={col: "Fecha de Inscripción"}, inplace=True)
 
+# Despliegue de la base ya estandarizada
 st.subheader("📋 Base de datos actual (Estandarizada)")
-st.caption(f"{len(df_sheets):,} registros activos en Google Sheets")
+st.caption(f"{len(df_sheets):?} registros activos en Google Sheets")
 st.dataframe(df_sheets, use_container_width=True, hide_index=True)
 
 st.divider()
 
-# ── Cargar archivo nuevo (Excel / CSV) ──
+# ── CARGA Y NORMALIZACIÓN DEL ARCHIVO NUEVO (Excel / CSV) ──
 st.subheader("📂 Cargar nuevos participantes")
 archivo = st.file_uploader(
     "Sube un archivo Excel (.xlsx) o CSV (.csv)",
@@ -229,9 +226,10 @@ if archivo:
         else:
             df_nuevo = pd.read_excel(archivo, engine="openpyxl")
         
-        # Limpieza y homologación de cabeceras del archivo del usuario
-        df_nuevo.columns = df_nuevo.columns.astype(str).str.strip()
+        # Limpieza Regex sobre las columnas del archivo subido por el usuario
+        df_nuevo.columns = [re.sub(r'\s+', ' ', str(col)).strip() for col in df_nuevo.columns]
         
+        # Mapeo explícito
         columnas_mapeo_nuevo = {
             "codigo_ec": "Código EC",
             "Código_EC": "Código EC",
@@ -242,54 +240,4 @@ if archivo:
             "convocatoria_sice": "Programa",
             "Convocatoria_SICE": "Programa",
             "Convocatoria SICE": "Programa",
-            "fecha_de_inscripcion": "Fecha de Inscripción",
-            "fecha_de_inscripción": "Fecha de Inscripción",
-            "Fecha de Inscripcion": "Fecha de Inscripción",
-            "FECHA DE INSCRIPCIÓN": "Fecha de Inscripción"
-        }
-        df_nuevo.rename(columns=columnas_mapeo_nuevo, inplace=True)
-
-    except Exception as e:
-        st.error(f"❌ No se pudo leer el archivo cargado: {e}")
-        st.code(traceback.format_exc())
-        st.stop()
-
-    st.write(f"**Vista previa del archivo cargado** — {len(df_nuevo):,} filas detectadas")
-    st.dataframe(df_nuevo, use_container_width=True, hide_index=True)
-
-    # Verificar columnas mínimas obligatorias ternarias en el archivo del usuario
-    cols_faltantes = [c for c in ["Código EC", "Programa", "Fecha de Inscripción"] if c not in df_nuevo.columns]
-    if cols_faltantes:
-        st.error(f"❌ El archivo no tiene las columnas requeridas: {cols_faltantes}")
-        st.warning("🔍 Columnas leídas en tu archivo:")
-        st.json(list(df_nuevo.columns))
-        st.stop()
-
-    st.divider()
-
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        confirmar = st.button("✅ Aplicar actualización", type="primary", use_container_width=True)
-
-    if confirmar:
-        with st.spinner("Procesando motor UPSERT por Clave Compuesta Ternaria (Año-Mes)..."):
-            try:
-                df_final, nuevos, actualizados = aplicar_upsert_maestro(df_sheets, df_nuevo)
-                subir_dataframe(client, spreadsheet_id, nombre_hoja, df_final)
-                cargar_hoja.clear()  # Invalidar caché para ver los cambios inmediatamente
-            except ValueError as e:
-                st.error(f"❌ {e}")
-                st.stop()
-            except Exception as e:
-                st.error(f"❌ Error al subir datos: {e}")
-                st.code(traceback.format_exc())
-                st.stop()
-
-        st.success("✅ ¡Base de datos unificada y actualizada correctamente!")
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Registros nuevos", nuevos)
-        m2.metric("Registros enriquecidos (Upsert)", actualizados)
-        m3.metric("Total consolidado en Sheets", len(df_final))
-
-        st.subheader("📋 Nueva Base de Datos Consolidada")
-        st.dataframe(df_final, use_container_width=True, hide_index=True)
+            "fecha
