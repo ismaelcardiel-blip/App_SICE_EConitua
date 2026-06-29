@@ -47,7 +47,6 @@ def obtener_spreadsheet(client, entrada_id_o_url):
     """
     entrada_limpia = entrada_id_o_url.strip()
     if "docs.google.com" in entrada_limpia:
-        # Si el usuario olvidó el https:// se lo agregamos para gspread
         if not entrada_limpia.startswith("http"):
             entrada_limpia = "https://" + entrada_limpia
         return client.open_by_url(entrada_limpia)
@@ -58,7 +57,6 @@ def obtener_spreadsheet(client, entrada_id_o_url):
 def cargar_hoja(_client, spreadsheet_id: str, nombre_hoja: str) -> pd.DataFrame:
     """Lee la hoja de Google Sheets y retorna un DataFrame."""
     try:
-        # Usamos nuestro extractor inteligente en lugar de open_by_key directo
         sh = obtener_spreadsheet(_client, spreadsheet_id)
         ws = sh.worksheet(nombre_hoja)
         datos = ws.get_all_records()
@@ -77,6 +75,7 @@ def subir_dataframe(client, spreadsheet_id: str, nombre_hoja: str, df: pd.DataFr
     ws = sh.worksheet(nombre_hoja)
     ws.clear()
     ws.update([df.columns.tolist()] + df.fillna("").astype(str).values.tolist())
+
 # ─────────────────────────────────────────────
 # MOTOR UPSERT
 # ─────────────────────────────────────────────
@@ -187,9 +186,8 @@ if archivo:
         else:
             df_nuevo = pd.read_excel(archivo, engine="openpyxl")
         
-        # ── NUEVA CAPA DE NORMALIZACIÓN DE COLUMNAS ──
-        # 1. Eliminamos espacios en blanco al principio y al final de los nombres de columnas
-        # 2. Reemplazamos espacios internos por guiones bajos para tolerar "Convocatoria SICE"
+        # ── CAPA DE NORMALIZACIÓN DE COLUMNAS ──
+        # 1. Limpieza de espacios y formateo inicial de guiones bajos
         df_nuevo.columns = (
             df_nuevo.columns
             .astype(str)
@@ -197,7 +195,7 @@ if archivo:
             .str.replace(" ", "_")
         )
         
-        # 3. Corrección selectiva: Si la escribieron en minúsculas o variaciones comunes, la forzamos
+        # 2. Corrección selectiva: Forzamos la nomenclatura exacta
         columnas_mapeo = {
             "convocatoria_sice": "Convocatoria_SICE",
             "CONVOCATORIA_SICE": "Convocatoria_SICE",
@@ -205,16 +203,17 @@ if archivo:
             "CÓDIGO_EC": "Código EC",
             "Código_EC": "Código EC"
         }
-        df_nuevo.rename(columns=columnas_mapeo, inplace=init)
+        df_nuevo.rename(columns=columnas_mapeo, inplace=True)
 
     except Exception as e:
         st.error(f"❌ No se pudo leer el archivo: {e}")
+        st.code(traceback.format_exc())
         st.stop()
 
     st.write(f"**Vista previa del archivo** — {len(df_nuevo):,} filas")
     st.dataframe(df_nuevo, use_container_width=True, hide_index=True)
 
-    # Verificar columnas mínimas
+    # Verificar columnas mínimas obligatorias
     cols_faltantes = [c for c in ["Código EC", "Convocatoria_SICE"] if c not in df_nuevo.columns]
     if cols_faltantes:
         st.error(f"❌ El archivo no tiene las columnas requeridas: {cols_faltantes}")
@@ -231,7 +230,6 @@ if archivo:
             try:
                 df_final, nuevos, actualizados = aplicar_upsert_maestro(df_sheets, df_nuevo)
                 subir_dataframe(client, spreadsheet_id, nombre_hoja, df_final)
-                # Limpiar caché para que la tabla se refresque
                 cargar_hoja.clear()
             except ValueError as e:
                 st.error(f"❌ {e}")
