@@ -186,6 +186,27 @@ if archivo:
             df_nuevo = pd.read_csv(archivo)
         else:
             df_nuevo = pd.read_excel(archivo, engine="openpyxl")
+        
+        # ── NUEVA CAPA DE NORMALIZACIÓN DE COLUMNAS ──
+        # 1. Eliminamos espacios en blanco al principio y al final de los nombres de columnas
+        # 2. Reemplazamos espacios internos por guiones bajos para tolerar "Convocatoria SICE"
+        df_nuevo.columns = (
+            df_nuevo.columns
+            .astype(str)
+            .str.strip()
+            .str.replace(" ", "_")
+        )
+        
+        # 3. Corrección selectiva: Si la escribieron en minúsculas o variaciones comunes, la forzamos
+        columnas_mapeo = {
+            "convocatoria_sice": "Convocatoria_SICE",
+            "CONVOCATORIA_SICE": "Convocatoria_SICE",
+            "codigo_ec": "Código EC",
+            "CÓDIGO_EC": "Código EC",
+            "Código_EC": "Código EC"
+        }
+        df_nuevo.rename(columns=columnas_mapeo, inplace=init)
+
     except Exception as e:
         st.error(f"❌ No se pudo leer el archivo: {e}")
         st.stop()
