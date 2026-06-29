@@ -1,5 +1,16 @@
+# Core
 streamlit
 pandas
+numpy
+requests
+
+# Google Sheets
 gspread
-oauth2client
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+
+# Excel / fechas
 openpyxl
+python-dateutil
+pytz
