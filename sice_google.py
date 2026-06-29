@@ -84,7 +84,7 @@ def aplicar_upsert_maestro(df_google_sheets, df_nuevos_datos):
     Motor UPSERT por clave compuesta ternaria (Año-Mes): Código EC + Programa + Periodo Mensual.
     Retorna: (df_final, contador_nuevos, contador_actualizados)
     """
-    # 1. ACTUALIZAMOS LAS COLUMNAS REQUERIDAS DE LA FUNCIÓN
+    # Verificación de columnas obligatorias estandarizadas
     COLS_REQUERIDAS = ["Código EC", "Programa", "Fecha de Inscripción"]
 
     for col in COLS_REQUERIDAS:
@@ -96,7 +96,6 @@ def aplicar_upsert_maestro(df_google_sheets, df_nuevos_datos):
     df_base   = df_google_sheets.copy()
     df_nuevos = df_nuevos_datos.copy()
 
-    # 2. AQUÍ REEMPLAZAMOS TU FUNCIÓN CONSTRUIR_ID POR LA DE AÑO-MES
     def construir_id(df):
         # Extraemos estrictamente el Año y el Mes (YYYY-MM), ignorando días y horas
         periodo_mensual = (
@@ -150,10 +149,10 @@ def aplicar_upsert_maestro(df_google_sheets, df_nuevos_datos):
     return df_final[cols_salida], contador_nuevos, contador_actualizados
 
 # ─────────────────────────────────────────────
-# INTERFAZ
+# INTERFAZ USUARIO
 # ─────────────────────────────────────────────
 st.title("🎓 Unidad de Educación Continua")
-st.caption("Portal de carga y actualización de participantes")
+st.caption("Portal de carga y actualización de participantes (Clave Compuesta Ternaria)")
 
 # ── Sidebar: configuración ──
 with st.sidebar:
@@ -170,19 +169,36 @@ if not spreadsheet_id:
     st.info("👈 Ingresa el ID de tu Google Sheet en el panel lateral para comenzar.")
     st.stop()
 
-# ── Cargar datos actuales de Sheets ──
+# ── Cargar datos actuales de Sheets y Normalizar ──
 client = conectar_google_sheets()
 
 with st.spinner("Leyendo base de datos en Google Sheets..."):
     df_sheets = cargar_hoja(client, spreadsheet_id, nombre_hoja)
+    
+    # Limpieza ultra-defensiva de columnas de Google Sheets
+    if df_sheets is not None and not df_sheets.empty:
+        df_sheets.columns = df_sheets.columns.astype(str).str.strip()
+        columnas_mapeo_sheets = {
+            "Codigo EC": "Código EC",
+            "codigo_ec": "Código EC",
+            "Código_EC": "Código EC",
+            "convocatoria_sice": "Programa",
+            "Convocatoria_SICE": "Programa",
+            "Convocatoria SICE": "Programa",
+            "programa": "Programa",
+            "Fecha de Inscripcion": "Fecha de Inscripción",
+            "fecha_de_inscripcion": "Fecha de Inscripción",
+            "fecha_de_inscripción": "Fecha de Inscripción"
+        }
+        df_sheets.rename(columns=columnas_mapeo_sheets, inplace=True)
 
-st.subheader("📋 Base de datos actual")
-st.caption(f"{len(df_sheets):,} registros en Google Sheets")
+st.subheader("📋 Base de datos actual (Estandarizada)")
+st.caption(f"{len(df_sheets):,} registros activos en Google Sheets")
 st.dataframe(df_sheets, use_container_width=True, hide_index=True)
 
 st.divider()
 
-# ── Cargar archivo nuevo ──
+# ── Cargar archivo nuevo (Excel / CSV) ──
 st.subheader("📂 Cargar nuevos participantes")
 archivo = st.file_uploader(
     "Sube un archivo Excel (.xlsx) o CSV (.csv)",
@@ -196,56 +212,14 @@ if archivo:
         else:
             df_nuevo = pd.read_excel(archivo, engine="openpyxl")
         
-# ─────────────────────────────────────────────
-# CARGA DE DATOS DESDE GOOGLE SHEETS
-# ─────────────────────────────────────────────
-client = conectar_google_sheets()
-
-with st.spinner("Leyendo base de datos en Google Sheets..."):
-    df_sheets = cargar_hoja(client, spreadsheet_id, nombre_hoja)
-    
-    # Limpieza defensiva para las columnas que vienen de Google Sheets
-    if df_sheets is not None and not df_sheets.empty:
-        df_sheets.columns = df_sheets.columns.astype(str).str.strip()
-        columnas_mapeo_sheets = {
-            "Codigo EC": "Código EC",
-            "codigo_ec": "Código EC",
-            "Código_EC": "Código EC",
-            "convocatoria_sice": "Programa",
-            "Convocatoria_SICE": "Programa",
-            "Convocatoria SICE": "Programa",
-            "programa": "Programa",
-            "Fecha de Inscripcion": "Fecha de Inscripción",
-            "fecha_de_inscripcion": "Fecha de Inscripción"
-        }
-        df_sheets.rename(columns=columnas_mapeo_sheets, inplace=True)
-
-st.subheader("📋 Base de datos actual (Estandarizada)")
-st.caption(f"{len(df_sheets):,} registros activos en Google Sheets")
-st.dataframe(df_sheets, use_container_width=True, hide_index=True)
-
-st.divider()
-
-# ─────────────────────────────────────────────
-# CARGA DEL ARCHIVO NUEVO (USUARIO)
-# ─────────────────────────────────────────────
-st.subheader("📂 Cargar nuevos participantes")
-archivo = st.file_uploader("Sube un archivo Excel (.xlsx) o CSV (.csv)", type=["xlsx", "csv"])
-
-if archivo:
-    try:
-        if archivo.name.endswith(".csv"):
-            df_nuevo = pd.read_csv(archivo)
-        else:
-            df_nuevo = pd.read_excel(archivo, engine="openpyxl")
-        
-        # Limpieza de las columnas del archivo subido
+        # Limpieza y homologación de cabeceras del archivo del usuario
         df_nuevo.columns = df_nuevo.columns.astype(str).str.strip()
         
         columnas_mapeo_nuevo = {
             "codigo_ec": "Código EC",
             "Código_EC": "Código EC",
             "CÓDIGO_EC": "Código EC",
+            "Codigo EC": "Código EC",
             "programa": "Programa",
             "PROGRAMA": "Programa",
             "convocatoria_sice": "Programa",
@@ -266,13 +240,12 @@ if archivo:
     st.write(f"**Vista previa del archivo cargado** — {len(df_nuevo):,} filas detectadas")
     st.dataframe(df_nuevo, use_container_width=True, hide_index=True)
 
-    st.write(f"**Vista previa del archivo** — {len(df_nuevo):,} filas")
-    st.dataframe(df_nuevo, use_container_width=True, hide_index=True)
-
-    # Verificar columnas mínimas obligatorias
-    cols_faltantes = [c for c in ["Código EC", "Programa"] if c not in df_nuevo.columns]
+    # Verificar columnas mínimas obligatorias ternarias en el archivo del usuario
+    cols_faltantes = [c for c in ["Código EC", "Programa", "Fecha de Inscripción"] if c not in df_nuevo.columns]
     if cols_faltantes:
         st.error(f"❌ El archivo no tiene las columnas requeridas: {cols_faltantes}")
+        st.warning("🔍 Columnas leídas en tu archivo:")
+        st.json(list(df_nuevo.columns))
         st.stop()
 
     st.divider()
@@ -282,11 +255,11 @@ if archivo:
         confirmar = st.button("✅ Aplicar actualización", type="primary", use_container_width=True)
 
     if confirmar:
-        with st.spinner("Procesando upsert..."):
+        with st.spinner("Procesando motor UPSERT por Clave Compuesta Ternaria (Año-Mes)..."):
             try:
                 df_final, nuevos, actualizados = aplicar_upsert_maestro(df_sheets, df_nuevo)
                 subir_dataframe(client, spreadsheet_id, nombre_hoja, df_final)
-                cargar_hoja.clear()
+                cargar_hoja.clear()  # Invalidar caché para ver los cambios inmediatamente
             except ValueError as e:
                 st.error(f"❌ {e}")
                 st.stop()
@@ -295,11 +268,11 @@ if archivo:
                 st.code(traceback.format_exc())
                 st.stop()
 
-        st.success("✅ Base de datos actualizada correctamente")
+        st.success("✅ ¡Base de datos unificada y actualizada correctamente!")
         m1, m2, m3 = st.columns(3)
-        m1.metric("Registros nuevos",       nuevos)
-        m2.metric("Registros actualizados", actualizados)
-        m3.metric("Total en Sheets",        len(df_final))
+        m1.metric("Registros nuevos", nuevos)
+        m2.metric("Registros enriquecidos (Upsert)", actualizados)
+        m3.metric("Total consolidado en Sheets", len(df_final))
 
-        st.subheader("📋 Base de datos actualizada")
+        st.subheader("📋 Nueva Base de Datos Consolidada")
         st.dataframe(df_final, use_container_width=True, hide_index=True)
