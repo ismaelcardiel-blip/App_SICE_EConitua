@@ -196,24 +196,30 @@ if archivo:
         else:
             df_nuevo = pd.read_excel(archivo, engine="openpyxl")
         
-        # ── CAPA DE NORMALIZACIÓN DE COLUMNAS ──
-        # 1. Limpieza de espacios y formateo inicial de guiones bajos
-        df_nuevo.columns = (
-            df_nuevo.columns
-            .astype(str)
-            .str.strip()
-            .str.replace(" ", "_")
-        )
+       # ── Cargar y normalizar datos de Google Sheets ──
+client = conectar_google_sheets()
+
+with st.spinner("Leyendo base de datos en Google Sheets..."):
+    df_sheets = cargar_hoja(client, spreadsheet_id, nombre_hoja)
+    
+    # ── NUEVA LIMPIEZA ULTRA-DEFENSIVA PARA GOOGLE SHEETS ──
+    if df_sheets is not None and not df_sheets.empty:
+        # 1. Quitamos espacios invisibles al inicio y final de las columnas en Sheets
+        df_sheets.columns = df_sheets.columns.astype(str).str.strip()
         
-        # 2. Corrección selectiva: Forzamos la nomenclatura exacta
-        columnas_mapeo = {
-            "programa": "Programa",
-            "PROGRAMA": "Programa",
+        # 2. Homologamos tildes y nombres antiguos en la base central
+        columnas_mapeo_sheets = {
+            "Codigo EC": "Código EC",
             "codigo_ec": "Código EC",
-            "CÓDIGO_EC": "Código EC",
-            "Código_EC": "Código EC"
+            "Código_EC": "Código EC",
+            "convocatoria_sice": "Programa",
+            "Convocatoria_SICE": "Programa",
+            "Convocatoria SICE": "Programa",
+            "programa": "Programa",
+            "Fecha de Inscripcion": "Fecha de Inscripción",
+            "fecha_de_inscripcion": "Fecha de Inscripción"
         }
-        df_nuevo.rename(columns=columnas_mapeo, inplace=True)
+        df_sheets.rename(columns=columnas_mapeo_sheets, inplace=True)
 
     except Exception as e:
         st.error(f"❌ No se pudo leer el archivo: {e}")
