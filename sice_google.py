@@ -175,9 +175,16 @@ client = conectar_google_sheets()
 with st.spinner("Leyendo base de datos en Google Sheets..."):
     df_sheets = cargar_hoja(client, spreadsheet_id, nombre_hoja)
     
-    # Limpieza ultra-defensiva de columnas de Google Sheets
+    # ── AUDITORÍA DE COLUMNAS (Para ver qué está leyendo Python realmente) ──
     if df_sheets is not None and not df_sheets.empty:
-        df_sheets.columns = df_sheets.columns.astype(str).str.strip()
+        # Imprime temporalmente las columnas originales para que descubramos el error visualmente
+        st.info(f"🔍 Columnas detectadas originalmente en la pestaña '{nombre_hoja}':")
+        st.json(list(df_sheets.columns))
+        
+        # ── LIMPIEZA REGEX ULTRA-AGRESIVA ──
+        # Reemplaza saltos de línea, tabulaciones y múltiples espacios por un solo espacio estándar
+        df_sheets.columns = [re.sub(r'\s+', ' ', str(col)).strip() for col in df_sheets.columns]
+        
         columnas_mapeo_sheets = {
             "Codigo EC": "Código EC",
             "codigo_ec": "Código EC",
