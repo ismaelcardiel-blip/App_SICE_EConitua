@@ -240,4 +240,65 @@ if archivo:
             "convocatoria_sice": "Programa",
             "Convocatoria_SICE": "Programa",
             "Convocatoria SICE": "Programa",
-            "fecha
+            "fecha_de_inscripcion": "Fecha de Inscripción",
+            "fecha_de_inscripción": "Fecha de Inscripción",
+            "Fecha de Inscripcion": "Fecha de Inscripción",
+            "FECHA DE INSCRIPCIÓN": "Fecha de Inscripción"
+        }
+        df_nuevo.rename(columns=columnas_mapeo_nuevo, inplace=True)
+        
+        # Mapeo inteligente por aproximación para el archivo del usuario
+        for col in df_nuevo.columns:
+            col_min = col.lower()
+            if "codigo" in col_min or "código" in col_min:
+                df_nuevo.rename(columns={col: "Código EC"}, inplace=True)
+            elif "programa" in col_min or "convocatoria" in col_min:
+                df_nuevo.rename(columns={col: "Programa"}, inplace=True)
+            elif "fecha" in col_min and ("inscrip" in col_min or "ingreso" in col_min):
+                df_nuevo.rename(columns={col: "Fecha de Inscripción"}, inplace=True)
+
+    except Exception as e:
+        st.error(f"❌ No se pudo leer el archivo cargado: {e}")
+        st.code(traceback.format_exc())
+        st.stop()
+
+    st.write(f"**Vista previa del archivo cargado** — {len(df_nuevo):,} filas detectadas")
+    st.dataframe(df_nuevo, use_container_width=True, hide_index=True)
+
+    # Validación estructural estricta antes de habilitar el procesamiento
+    cols_faltantes = [c for c in ["Código EC", "Programa", "Fecha de Inscripción"] if c not in df_nuevo.columns]
+    if cols_faltantes:
+        st.error(f"❌ El archivo cargado no cuenta con los encabezados requeridos: {cols_faltantes}")
+        st.warning("🔍 Columnas interpretadas en tu archivo:")
+        st.json(list(df_nuevo.columns))
+        st.stop()
+
+    st.divider()
+
+    # Interfaz para la ejecución del motor
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        confirmar = st.button("✅ Aplicar actualización", type="primary", use_container_width=True)
+
+    if confirmar:
+        with st.spinner("Procesando motor UPSERT por Clave Compuesta Ternaria (Año-Mes)..."):
+            try:
+                df_final, nuevos, actualizados = aplicar_upsert_maestro(df_sheets, df_nuevo)
+                subir_dataframe(client, spreadsheet_id, nombre_hoja, df_final)
+                cargar_hoja.clear()  # Borramos caché de lectura para reflejar los datos actualizados
+            except ValueError as e:
+                st.error(f"❌ {e}")
+                st.stop()
+            except Exception as e:
+                st.error(f"❌ Error al subir datos a la plataforma: {e}")
+                st.code(traceback.format_exc())
+                st.stop()
+
+        st.success("✅ ¡Base de datos unificada y actualizada correctamente!")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Registros nuevos", nuevos)
+        m2.metric("Registros enriquecidos (Upsert)", actualizados)
+        m3.metric("Total consolidado en Sheets", len(df_final))
+
+        st.subheader("📋 Nueva Base de Datos Consolidada")
+        st.dataframe(df_final, use_container_width=True, hide_index=True)
