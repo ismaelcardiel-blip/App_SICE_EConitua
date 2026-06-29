@@ -202,29 +202,33 @@ client = conectar_google_sheets()
 with st.spinner("Leyendo base de datos en Google Sheets..."):
     df_sheets = cargar_hoja(client, spreadsheet_id, nombre_hoja)
     
-    # ── NUEVA LIMPIEZA ULTRA-DEFENSIVA PARA GOOGLE SHEETS ──
-    if df_sheets is not None and not df_sheets.empty:
-        # 1. Quitamos espacios invisibles al inicio y final de las columnas en Sheets
-        df_sheets.columns = df_sheets.columns.astype(str).str.strip()
-        
-        # 2. Homologamos tildes y nombres antiguos en la base central
-        columnas_mapeo_sheets = {
-            "Codigo EC": "Código EC",
-            "codigo_ec": "Código EC",
-            "Código_EC": "Código EC",
-            "convocatoria_sice": "Programa",
-            "Convocatoria_SICE": "Programa",
-            "Convocatoria SICE": "Programa",
-            "programa": "Programa",
-            "Fecha de Inscripcion": "Fecha de Inscripción",
-            "fecha_de_inscripcion": "Fecha de Inscripción"
-        }
-        df_sheets.rename(columns=columnas_mapeo_sheets, inplace=True)
+   # ── Cargar y normalizar datos de Google Sheets ──
+try:
+    client = conectar_google_sheets()
 
-    except Exception as e:
-        st.error(f"❌ No se pudo leer el archivo: {e}")
-        st.code(traceback.format_exc())
-        st.stop()
+    with st.spinner("Leyendo base de datos en Google Sheets..."):
+        df_sheets = cargar_hoja(client, spreadsheet_id, nombre_hoja)
+        
+        # ── LIMPIEZA ULTRA-DEFENSIVA PARA GOOGLE SHEETS ──
+        if df_sheets is not None and not df_sheets.empty:
+            df_sheets.columns = df_sheets.columns.astype(str).str.strip()
+            
+            columnas_mapeo_sheets = {
+                "Codigo EC": "Código EC",
+                "codigo_ec": "Código EC",
+                "Código_EC": "Código EC",
+                "convocatoria_sice": "Programa",
+                "Convocatoria_SICE": "Programa",
+                "Convocatoria SICE": "Programa",
+                "programa": "Programa",
+                "Fecha de Inscripcion": "Fecha de Inscripción",
+                "fecha_de_inscripcion": "Fecha de Inscripción"
+            }
+            df_sheets.rename(columns=columnas_mapeo_sheets, inplace=True)
+
+except Exception as e:
+    st.error(f"❌ Error al inicializar la base de datos: {e}")
+    st.stop()
 
     st.write(f"**Vista previa del archivo** — {len(df_nuevo):,} filas")
     st.dataframe(df_nuevo, use_container_width=True, hide_index=True)
