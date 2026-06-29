@@ -3,6 +3,7 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 import traceback
+import re
 
 # ─────────────────────────────────────────────
 # CONFIGURACIÓN DE PÁGINA (debe ser lo primero)
@@ -23,9 +24,14 @@ SCOPES = [
 
 @st.cache_resource
 def conectar_google_sheets():
-    """Retorna el cliente de gspread autenticado."""
+    """Retorna el cliente de gspread autenticado con saneamiento de llave."""
     try:
         creds_dict = dict(st.secrets["gcp_service_account"])
+        
+        # Saneamiento preventivo de la llave privada
+        if "private_key" in creds_dict:
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n").strip()
+            
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         client = gspread.authorize(creds)
         return client
@@ -34,14 +40,32 @@ def conectar_google_sheets():
         st.code(traceback.format_exc())
         st.stop()
 
+def obtener_spreadsheet(client, entrada_id_o_url):
+    """
+    Función adaptativa / Capa de abstracción:
+    Determina si la entrada es una URL o un ID y abre el archivo correctamente.
+    """
+    entrada_limpia = entrada_id_o_url.strip()
+    if "docs.google.com" in entrada_limpia:
+        # Si el usuario olvidó el https:// se lo agregamos para gspread
+        if not entrada_limpia.startswith("http"):
+            entrada_limpia = "https://" + entrada_limpia
+        return client.open_by_url(entrada_limpia)
+    else:
+        return client.open_by_key(entrada_limpia)
+
 @st.cache_data(ttl=60)
 def cargar_hoja(_client, spreadsheet_id: str, nombre_hoja: str) -> pd.DataFrame:
     """Lee la hoja de Google Sheets y retorna un DataFrame."""
     try:
-        sh = _client.open_by_key(spreadsheet_id)
+        # Usamos nuestro extractor inteligente en lugar de open_by_key directo
+        sh = obtener_spreadsheet(_client, spreadsheet_id)
         ws = sh.worksheet(nombre_hoja)
         datos = ws.get_all_records()
         return pd.DataFrame(datos)
+    except gspread.exceptions.WorksheetNotFound:
+        st.error(f"❌ No se encontró la pestaña llamada '{nombre_hoja}' en el archivo.")
+        st.stop()
     except Exception as e:
         st.error(f"❌ Error al leer Google Sheets: {e}")
         st.code(traceback.format_exc())
@@ -49,11 +73,10 @@ def cargar_hoja(_client, spreadsheet_id: str, nombre_hoja: str) -> pd.DataFrame:
 
 def subir_dataframe(client, spreadsheet_id: str, nombre_hoja: str, df: pd.DataFrame):
     """Reemplaza el contenido de la hoja con el DataFrame actualizado."""
-    sh = client.open_by_key(spreadsheet_id)
+    sh = obtener_spreadsheet(client, spreadsheet_id)
     ws = sh.worksheet(nombre_hoja)
     ws.clear()
     ws.update([df.columns.tolist()] + df.fillna("").astype(str).values.tolist())
-
 # ─────────────────────────────────────────────
 # MOTOR UPSERT
 # ─────────────────────────────────────────────
