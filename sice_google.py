@@ -81,10 +81,11 @@ def subir_dataframe(client, spreadsheet_id: str, nombre_hoja: str, df: pd.DataFr
 # ─────────────────────────────────────────────
 def aplicar_upsert_maestro(df_google_sheets, df_nuevos_datos):
     """
-    Motor UPSERT por clave compuesta: Código EC + Convocatoria_SICE.
+    Motor UPSERT por clave compuesta ternaria (Año-Mes): Código EC + Programa + Periodo Mensual.
     Retorna: (df_final, contador_nuevos, contador_actualizados)
     """
-    COLS_REQUERIDAS = ["Código EC", "Convocatoria_SICE"]
+    # 1. ACTUALIZAMOS LAS COLUMNAS REQUERIDAS DE LA FUNCIÓN
+    COLS_REQUERIDAS = ["Código EC", "Programa", "Fecha de Inscripción"]
 
     for col in COLS_REQUERIDAS:
         if col not in df_google_sheets.columns:
@@ -95,11 +96,20 @@ def aplicar_upsert_maestro(df_google_sheets, df_nuevos_datos):
     df_base   = df_google_sheets.copy()
     df_nuevos = df_nuevos_datos.copy()
 
+    # 2. AQUÍ REEMPLAZAMOS TU FUNCIÓN CONSTRUIR_ID POR LA DE AÑO-MES
     def construir_id(df):
+        # Extraemos estrictamente el Año y el Mes (YYYY-MM), ignorando días y horas
+        periodo_mensual = (
+            pd.to_datetime(df["Fecha de Inscripción"], dayfirst=True, errors='coerce')
+            .dt.strftime('%Y-%m')
+            .fillna(df["Fecha de Inscripción"].astype(str).str.strip().str.upper())
+        )
         return (
             df["Código EC"].astype(str).str.strip().str.upper()
             + "_"
-            + df["Convocatoria_SICE"].astype(str).str.strip().str.upper()
+            + df["Programa"].astype(str).str.strip().str.upper()
+            + "_"
+            + periodo_mensual
         )
 
     df_base["id_control"]   = construir_id(df_base)   if not df_base.empty   else ""
