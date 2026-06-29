@@ -77,6 +77,40 @@ def subir_dataframe(client, spreadsheet_id: str, nombre_hoja: str, df: pd.DataFr
     ws.update([df.columns.tolist()] + df.fillna("").astype(str).values.tolist())
 
 # ─────────────────────────────────────────────
+# UTILIDAD DE NORMALIZACIÓN (Anti-Duplicados)
+# ─────────────────────────────────────────────
+def normalizar_columnas_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Normaliza los encabezados mapeando columnas clave sin generar duplicados."""
+    df_copia = df.copy()
+    
+    # 1. Saneamiento inicial de espacios y saltos de línea
+    columnas_crudas = [re.sub(r'\s+', ' ', str(col)).strip() for col in df_copia.columns]
+    
+    nuevas_columnas = []
+    codigo_asignado = False
+    programa_asignado = False
+    fecha_asignada = False
+    
+    # 2. Asignación inteligente por orden de aparición
+    for col in columnas_crudas:
+        col_min = col.lower()
+        
+        if ("codigo" in col_min or "código" in col_min) and not codigo_asignado:
+            nuevas_columnas.append("Código EC")
+            codigo_asignado = True
+        elif ("programa" in col_min or "convocatoria" in col_min) and not programa_asignado:
+            nuevas_columnas.append("Programa")
+            programa_asignado = True
+        elif "fecha" in col_min and ("inscrip" in col_min or "ingreso" in col_min) and not fecha_asignada:
+            nuevas_columnas.append("Fecha de Inscripción")
+            fecha_asignada = True
+        else:
+            nuevas_columnas.append(col)
+            
+    df_copia.columns = nuevas_columnas
+    return df_copia
+
+# ─────────────────────────────────────────────
 # MOTOR UPSERT
 # ─────────────────────────────────────────────
 def aplicar_upsert_maestro(df_google_sheets, df_nuevos_datos):
@@ -84,7 +118,6 @@ def aplicar_upsert_maestro(df_google_sheets, df_nuevos_datos):
     Motor UPSERT por clave compuesta ternaria (Año-Mes): Código EC + Programa + Periodo Mensual.
     Retorna: (df_final, contador_nuevos, contador_actualizados)
     """
-    # Verificación estricta en el momento de procesar la lógica de negocio
     COLS_REQUERIDAS = ["Código EC", "Programa", "Fecha de Inscripción"]
 
     for col in COLS_REQUERIDAS:
@@ -97,7 +130,6 @@ def aplicar_upsert_maestro(df_google_sheets, df_nuevos_datos):
     df_nuevos = df_nuevos_datos.copy()
 
     def construir_id(df):
-        # Extraemos estrictamente el Año y el Mes (YYYY-MM), ignorando días y horas
         periodo_mensual = (
             pd.to_datetime(df["Fecha de Inscripción"], dayfirst=True, errors='coerce')
             .dt.strftime('%Y-%m')
@@ -169,50 +201,25 @@ if not spreadsheet_id:
     st.info("👈 Ingresa el ID de tu Google Sheet en el panel lateral para comenzar.")
     st.stop()
 
-# ── CONTROL DE FLUJO CENTRAL: CARGAR Y NORMALIZAR GOOGLE SHEETS ──
+# ── CARGAR Y NORMALIZAR GOOGLE SHEETS ──
 client = conectar_google_sheets()
 
 with st.spinner("Leyendo base de datos en Google Sheets..."):
-    df_sheets = cargar_hoja(client, spreadsheet_id, nombre_hoja)
+    df_sheets_raw = cargar_hoja(client, spreadsheet_id, nombre_hoja)
     
-    if df_sheets is not None and not df_sheets.empty:
-        # 1. Limpieza inicial de espacios ocultos
-        df_sheets.columns = [re.sub(r'\s+', ' ', str(col)).strip() for col in df_sheets.columns]
-        
-        # 2. Bucle inteligente: Evita renombrar si la columna destino ya existe
-        nuevas_columnas = []
-        for col in df_sheets.columns:
-            col_min = col.lower()
-            
-            if ("codigo" in col_min or "código" in col_min) and "Código EC" not in nuevas_columnas:
-                nuevas_columnas.append("Código EC")
-            elif ("programa" in col_min or "convocatoria" in col_min) and "Programa" not in nuevas_columnas:
-                nuevas_columnas.append("Programa")
-            elif "fecha" in col_min and ("inscrip" in col_min or "ingreso" in col_min) and "Fecha de Inscripción" not in nuevas_columnas:
-                nuevas_columnas.append("Fecha de Inscripción")
-            else:
-                nuevas_columnas.append(col) # Si no aplica o ya existe el destino, conserva el original
-                
-        df_sheets.columns = nuevas_columnas
-        
-        # 3. Mapeo inteligente por sub-palabras clave si aún fallase la detección exacta
-        for col in df_sheets.columns:
-            col_min = col.lower()
-            if "codigo" in col_min or "código" in col_min:
-                df_sheets.rename(columns={col: "Código EC"}, inplace=True)
-            elif "programa" in col_min or "convocatoria" in col_min:
-                df_sheets.rename(columns={col: "Programa"}, inplace=True)
-            elif "fecha" in col_min and ("inscrip" in col_min or "ingreso" in col_min):
-                df_sheets.rename(columns={col: "Fecha de Inscripción"}, inplace=True)
+    if df_sheets_raw is not None and not df_sheets_raw.empty:
+        df_sheets = normalizar_columnas_dataframe(df_sheets_raw)
+    else:
+        df_sheets = df_sheets_raw
 
-# Despliegue de la base ya estandarizada
+# Despliegue seguro de la base de datos
 st.subheader("📋 Base de datos actual (Estandarizada)")
 st.caption(f"{len(df_sheets):,} registros activos en Google Sheets")
 st.dataframe(df_sheets, use_container_width=True, hide_index=True)
 
 st.divider()
 
-# ── CARGA Y NORMALIZACIÓN DEL ARCHIVO NUEVO (Excel / CSV) ──
+# ── CARGA Y NORMALIZACIÓN DEL ARCHIVO NUEVO ──
 st.subheader("📂 Cargar nuevos participantes")
 archivo = st.file_uploader(
     "Sube un archivo Excel (.xlsx) o CSV (.csv)",
@@ -222,40 +229,12 @@ archivo = st.file_uploader(
 if archivo:
     try:
         if archivo.name.endswith(".csv"):
-            df_nuevo = pd.read_csv(archivo)
+            df_nuevo_raw = pd.read_csv(archivo)
         else:
-            df_nuevo = pd.read_excel(archivo, engine="openpyxl")
+            df_nuevo_raw = pd.read_excel(archivo, engine="openpyxl")
         
-        # Limpieza Regex sobre las columnas del archivo subido por el usuario
-        df_nuevo.columns = [re.sub(r'\s+', ' ', str(col)).strip() for col in df_nuevo.columns]
-        
-        # Mapeo explícito
-        columnas_mapeo_nuevo = {
-            "codigo_ec": "Código EC",
-            "Código_EC": "Código EC",
-            "CÓDIGO_EC": "Código EC",
-            "Codigo EC": "Código EC",
-            "programa": "Programa",
-            "PROGRAMA": "Programa",
-            "convocatoria_sice": "Programa",
-            "Convocatoria_SICE": "Programa",
-            "Convocatoria SICE": "Programa",
-            "fecha_de_inscripcion": "Fecha de Inscripción",
-            "fecha_de_inscripción": "Fecha de Inscripción",
-            "Fecha de Inscripcion": "Fecha de Inscripción",
-            "FECHA DE INSCRIPCIÓN": "Fecha de Inscripción"
-        }
-        df_nuevo.rename(columns=columnas_mapeo_nuevo, inplace=True)
-        
-        # Mapeo inteligente por aproximación para el archivo del usuario
-        for col in df_nuevo.columns:
-            col_min = col.lower()
-            if "codigo" in col_min or "código" in col_min:
-                df_nuevo.rename(columns={col: "Código EC"}, inplace=True)
-            elif "programa" in col_min or "convocatoria" in col_min:
-                df_nuevo.rename(columns={col: "Programa"}, inplace=True)
-            elif "fecha" in col_min and ("inscrip" in col_min or "ingreso" in col_min):
-                df_nuevo.rename(columns={col: "Fecha de Inscripción"}, inplace=True)
+        # Normalización anti-duplicados del archivo del usuario
+        df_nuevo = normalizar_columnas_dataframe(df_nuevo_raw)
 
     except Exception as e:
         st.error(f"❌ No se pudo leer el archivo cargado: {e}")
@@ -265,7 +244,7 @@ if archivo:
     st.write(f"**Vista previa del archivo cargado** — {len(df_nuevo):,} filas detectadas")
     st.dataframe(df_nuevo, use_container_width=True, hide_index=True)
 
-    # Validación estructural estricta antes de habilitar el procesamiento
+    # Validación estructural final
     cols_faltantes = [c for c in ["Código EC", "Programa", "Fecha de Inscripción"] if c not in df_nuevo.columns]
     if cols_faltantes:
         st.error(f"❌ El archivo cargado no cuenta con los encabezados requeridos: {cols_faltantes}")
@@ -275,7 +254,7 @@ if archivo:
 
     st.divider()
 
-    # Interfaz para la ejecución del motor
+    # Ejecución del motor UPSERT
     col1, col2 = st.columns([1, 3])
     with col1:
         confirmar = st.button("✅ Aplicar actualización", type="primary", use_container_width=True)
@@ -285,7 +264,7 @@ if archivo:
             try:
                 df_final, nuevos, actualizados = aplicar_upsert_maestro(df_sheets, df_nuevo)
                 subir_dataframe(client, spreadsheet_id, nombre_hoja, df_final)
-                cargar_hoja.clear()  # Borramos caché de lectura para reflejar los datos actualizados
+                cargar_hoja.clear()  # Borramos caché de lectura
             except ValueError as e:
                 st.error(f"❌ {e}")
                 st.stop()
