@@ -19,6 +19,7 @@ st.set_page_config(
 
 APP_DIR = Path(__file__).resolve().parent
 HEADER_IMAGE = APP_DIR / "assets" / "encabezado_udg_plus.png"
+HEADER_IMAGE_URL = "https://drive.google.com/thumbnail?id=1jGmydY4KKodpuB8O_rQG0YhJe40MaH-h&sz=w1600"
 
 
 def cargar_imagen_base64(path):
@@ -168,11 +169,12 @@ def aplicar_estilos_institucionales():
 
 def mostrar_encabezado():
     imagen = cargar_imagen_base64(HEADER_IMAGE)
-    fondo = (
-        f"background-image: url(data:image/png;base64,{imagen});"
-        if imagen
-        else "background: linear-gradient(90deg, #075b9c, #071d49);"
-    )
+    if HEADER_IMAGE_URL:
+        fondo = f"background-image: url('{HEADER_IMAGE_URL}');"
+    elif imagen:
+        fondo = f"background-image: url(data:image/png;base64,{imagen});"
+    else:
+        fondo = "background: linear-gradient(90deg, #075b9c, #071d49);"
     st.markdown(
         f"""
         <div class="sice-hero">
