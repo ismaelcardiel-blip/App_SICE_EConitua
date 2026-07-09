@@ -1,9 +1,10 @@
-[README_CAMBIOS_SICE.md](https://github.com/user-attachments/files/29821750/README_CAMBIOS_SICE.md)
+[README_CAMBIOS_SICE.md](https://github.com/user-attachments/files/29822676/README_CAMBIOS_SICE.md)
 # Cambios propuestos para App_SICE_EConitua
 
 Archivo principal generado:
 
 - `sice_google.py`
+- `assets/encabezado_udg_plus.png`
 
 ## Objetivo
 
@@ -22,8 +23,12 @@ Convertir la app en un cargador de base maestra para Educacion Continua que pued
 - Se reemplazo la llave anterior `Codigo EC + Programa + Mes` porque no identifica a una persona.
 - Se agregaron llaves:
   - `Llave participante`: usa CURP, correo o nombre/telefono.
-  - `Llave curso`: usa Codigo EC, Clave Curso o Programa + Fecha.
+  - `Llave curso`: usa Clave Curso, Clave Grupo o Programa + Fecha. El Codigo EC se conserva como dato del SII, pero ya no se usa como si fuera la identidad del curso.
   - `Llave registro`: combina participante + curso.
+- El upsert ahora compara varias pistas de identidad por persona, no solo la llave visible. Esto permite cruzar una fila del SII con CURP y correo contra una fila de matriculados que solo trae correo.
+- Cuando detecta que una fila nueva corresponde a una persona ya existente, fusiona la informacion: conserva los campos ya llenos y completa solamente los campos vacios. Por ejemplo, si el SII ya tenia `Codigo EC` y Matriculados trae programa o telefono, la fila final se queda con ambos datos sin duplicar a la persona.
+- Si una fila nueva podria coincidir con varias filas existentes de la misma persona, se omite para revision en lugar de unirla automaticamente al curso equivocado.
+- Se agrego una vista institucional con encabezado UDG+, paleta azul institucional, metricas tipo tablero, botones y sidebar con acabado mas sobrio.
 - Se agrego homologacion de columnas para archivos de matriculados:
   - `Fecha registro` -> `Fecha de Inscripción`
   - `Apellido paterno` -> `Paterno`
