@@ -1,8 +1,10 @@
+import base64
 import re
 import traceback
 import unicodedata
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 import gspread
 import pandas as pd
@@ -11,10 +13,182 @@ from google.oauth2.service_account import Credentials
 
 
 st.set_page_config(
-    page_title="SICE Educacion Continua",
-    page_icon="SICE",
+    page_title="SICE Educación Continua",
     layout="wide",
 )
+
+APP_DIR = Path(__file__).resolve().parent
+HEADER_IMAGE = APP_DIR / "assets" / "encabezado_udg_plus.png"
+
+
+def cargar_imagen_base64(path):
+    if not path.exists():
+        return ""
+    return base64.b64encode(path.read_bytes()).decode("utf-8")
+
+
+def aplicar_estilos_institucionales():
+    st.markdown(
+        """
+        <style>
+            :root {
+                --udg-azul: #004a86;
+                --udg-azul-profundo: #071d49;
+                --udg-azul-medio: #0b63a5;
+                --udg-dorado: #c8a04a;
+                --udg-fondo: #f4f7fb;
+                --udg-borde: #d9e2ef;
+                --udg-texto: #172033;
+                --udg-muted: #5f6f86;
+            }
+
+            .stApp {
+                background: var(--udg-fondo);
+                color: var(--udg-texto);
+            }
+
+            .block-container {
+                max-width: 1320px;
+                padding-top: 1.25rem;
+                padding-bottom: 3rem;
+            }
+
+            section[data-testid="stSidebar"] {
+                background: #ffffff;
+                border-right: 1px solid var(--udg-borde);
+            }
+
+            section[data-testid="stSidebar"] h2,
+            section[data-testid="stSidebar"] h3 {
+                color: var(--udg-azul-profundo);
+                font-weight: 700;
+            }
+
+            div[data-testid="stMetric"] {
+                background: #ffffff;
+                border: 1px solid var(--udg-borde);
+                border-top: 4px solid var(--udg-azul-medio);
+                border-radius: 8px;
+                padding: 0.85rem 1rem;
+            }
+
+            div[data-testid="stMetric"] label {
+                color: var(--udg-muted);
+                font-weight: 600;
+            }
+
+            div[data-testid="stMetricValue"] {
+                color: var(--udg-azul-profundo);
+                font-weight: 800;
+            }
+
+            .stButton > button,
+            .stDownloadButton > button {
+                border-radius: 6px;
+                border: 1px solid var(--udg-azul);
+                background: var(--udg-azul);
+                color: #ffffff;
+                font-weight: 700;
+            }
+
+            .stButton > button:hover,
+            .stDownloadButton > button:hover {
+                border-color: var(--udg-azul-profundo);
+                background: var(--udg-azul-profundo);
+                color: #ffffff;
+            }
+
+            h2, h3 {
+                color: var(--udg-azul-profundo);
+                letter-spacing: 0;
+            }
+
+            hr {
+                border-color: var(--udg-borde);
+            }
+
+            .sice-hero {
+                overflow: hidden;
+                border-radius: 8px;
+                border: 1px solid #123f76;
+                background: linear-gradient(90deg, #075b9c, #071d49);
+                margin-bottom: 1.25rem;
+                box-shadow: 0 14px 36px rgba(7, 29, 73, 0.16);
+            }
+
+            .sice-hero-image {
+                min-height: 138px;
+                background-size: cover;
+                background-position: center;
+            }
+
+            .sice-hero-content {
+                background: #ffffff;
+                border-top: 4px solid var(--udg-dorado);
+                padding: 1.1rem 1.25rem 1.2rem;
+            }
+
+            .sice-kicker {
+                color: var(--udg-azul);
+                font-size: 0.78rem;
+                font-weight: 800;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                margin-bottom: 0.2rem;
+            }
+
+            .sice-title {
+                color: var(--udg-azul-profundo);
+                font-size: clamp(1.55rem, 2.2vw, 2.2rem);
+                font-weight: 800;
+                line-height: 1.16;
+                margin: 0;
+            }
+
+            .sice-subtitle {
+                color: var(--udg-muted);
+                font-size: 0.98rem;
+                margin-top: 0.35rem;
+                max-width: 860px;
+            }
+
+            .sice-section-label {
+                color: var(--udg-azul);
+                font-size: 0.78rem;
+                font-weight: 800;
+                letter-spacing: 0.07em;
+                text-transform: uppercase;
+                margin: 1.1rem 0 0.2rem;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def mostrar_encabezado():
+    imagen = cargar_imagen_base64(HEADER_IMAGE)
+    fondo = (
+        f"background-image: url(data:image/png;base64,{imagen});"
+        if imagen
+        else "background: linear-gradient(90deg, #075b9c, #071d49);"
+    )
+    st.markdown(
+        f"""
+        <div class="sice-hero">
+            <div class="sice-hero-image" style="{fondo}"></div>
+            <div class="sice-hero-content">
+                <div class="sice-kicker">Unidad de Educación Continua</div>
+                <h1 class="sice-title">SICE Educación Continua</h1>
+                <div class="sice-subtitle">
+                    Base maestra institucional para carga, homologación y actualización
+                    de participantes.
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 SCOPES = [
@@ -399,6 +573,50 @@ def nombre_completo(row):
     return " ".join(limpiar_texto(p) for p in partes if limpiar_texto(p))
 
 
+def llaves_participante(row):
+    curp = normalizar_token(row.get("CURP", "")).upper()
+    correo = normalizar_token(row.get("Correo", "")).upper()
+    telefono = limpiar_identificador(row.get("Teléfono", ""))
+    nombre = normalizar_token(nombre_completo(row)).upper()
+
+    llaves = []
+    if curp:
+        llaves.append(f"CURP:{curp}")
+    if correo:
+        llaves.append(f"CORREO:{correo}")
+    if nombre and telefono:
+        llaves.append(f"NOMBRE_TEL:{nombre}:{telefono}")
+    if nombre:
+        llaves.append(f"NOMBRE:{nombre}")
+    return list(dict.fromkeys(llaves))
+
+
+def mes_de_fecha(valor):
+    fecha = pd.to_datetime(convertir_fecha(valor), errors="coerce")
+    return "" if pd.isna(fecha) else fecha.strftime("%Y-%m")
+
+
+def llaves_curso(row):
+    clave_curso = normalizar_token(row.get("Clave Curso", "")).upper()
+    clave_grupo = normalizar_token(row.get("Clave Grupo", "")).upper()
+    programa = normalizar_token(row.get("Programa", "")).upper()
+    inicio = limpiar_texto(row.get("Fecha inicio curso", ""))
+    inscripcion_mes = mes_de_fecha(row.get("Fecha de Inscripción", ""))
+
+    llaves = []
+    if clave_curso:
+        llaves.append(f"CLAVE_CURSO:{clave_curso}")
+    if clave_grupo:
+        llaves.append(f"CLAVE_GRUPO:{clave_grupo}")
+    if programa and inicio:
+        llaves.append(f"PROGRAMA_INICIO:{programa}:{inicio}")
+    if programa and inscripcion_mes:
+        llaves.append(f"PROGRAMA_MES:{programa}:{inscripcion_mes}")
+    if programa:
+        llaves.append(f"PROGRAMA:{programa}")
+    return list(dict.fromkeys(llaves))
+
+
 def construir_llaves(df):
     salida = df.copy()
     participante = []
@@ -406,40 +624,10 @@ def construir_llaves(df):
     registro = []
 
     for _, row in salida.iterrows():
-        curp = normalizar_token(row.get("CURP", "")).upper()
-        correo = normalizar_token(row.get("Correo", "")).upper()
-        telefono = limpiar_identificador(row.get("Teléfono", ""))
-        nombre = normalizar_token(nombre_completo(row)).upper()
-
-        if curp:
-            llave_participante = f"CURP:{curp}"
-        elif correo:
-            llave_participante = f"CORREO:{correo}"
-        elif nombre and telefono:
-            llave_participante = f"NOMBRE_TEL:{nombre}:{telefono}"
-        elif nombre:
-            llave_participante = f"NOMBRE:{nombre}"
-        else:
-            llave_participante = ""
-
-        codigo = normalizar_token(row.get("Código EC", "")).upper()
-        clave_curso = normalizar_token(row.get("Clave Curso", "")).upper()
-        programa = normalizar_token(row.get("Programa", "")).upper()
-        inicio = limpiar_texto(row.get("Fecha inicio curso", ""))
-        inscripcion = limpiar_texto(row.get("Fecha de Inscripción", ""))
-
-        if codigo:
-            llave_curso = f"CODIGO_EC:{codigo}"
-        elif clave_curso:
-            llave_curso = f"CLAVE_CURSO:{clave_curso}"
-        elif programa and inicio:
-            llave_curso = f"PROGRAMA_INICIO:{programa}:{inicio}"
-        elif programa and inscripcion:
-            llave_curso = f"PROGRAMA_FECHA:{programa}:{inscripcion}"
-        elif programa:
-            llave_curso = f"PROGRAMA:{programa}"
-        else:
-            llave_curso = ""
+        p_keys = llaves_participante(row)
+        c_keys = llaves_curso(row)
+        llave_participante = p_keys[0] if p_keys else ""
+        llave_curso = c_keys[0] if c_keys else ""
 
         llave_registro = f"{llave_participante}|{llave_curso}" if llave_participante and llave_curso else ""
         participante.append(llave_participante)
@@ -465,8 +653,6 @@ def validar_registros(df):
             obs.append("Sin programa")
         if not limpiar_texto(row.get("Fecha de Inscripción", "")):
             obs.append("Sin fecha de inscripción/registro")
-        if not limpiar_texto(row.get("Llave registro", "")):
-            obs.append("Sin llave de registro")
         observaciones.append("; ".join(obs))
         estatus.append("Revisar" if obs else "OK")
 
@@ -552,61 +738,85 @@ def asignar_fecha_cartelera(df, cartelera, tolerancia_dias):
     return salida
 
 
+def registro_desde_row(row):
+    return {
+        "datos": row.to_dict(),
+        "participantes": set(llaves_participante(row)),
+        "cursos": set(llaves_curso(row)),
+    }
+
+
+def cursos_compatibles(cursos_base, cursos_nuevos):
+    if not cursos_base or not cursos_nuevos:
+        return True
+    if cursos_base & cursos_nuevos:
+        return True
+    programas_base = {c for c in cursos_base if c.startswith("PROGRAMA:")}
+    programas_nuevos = {c for c in cursos_nuevos if c.startswith("PROGRAMA:")}
+    return bool(programas_base & programas_nuevos)
+
+
+def fusionar_registro(base, nuevo):
+    cambio = False
+    for col, valor_nuevo in nuevo.items():
+        valor_actual = base.get(col, "")
+        if valor_vacio(valor_actual) and not valor_vacio(valor_nuevo):
+            base[col] = valor_nuevo
+            cambio = True
+    return cambio
+
+
 def aplicar_upsert_maestro(df_base_raw, df_nuevos_raw):
     df_base = homologar_base_existente(df_base_raw)
     df_nuevos = homologar_base_existente(df_nuevos_raw)
 
-    if df_base.empty:
-        base_dict = {}
-        base_sin_llave = pd.DataFrame(columns=OUTPUT_COLUMNS)
-    else:
-        con_llave = df_base["Llave registro"].map(limpiar_texto) != ""
-        base_sin_llave = df_base[~con_llave].copy()
-        df_base = df_base[con_llave].drop_duplicates(subset=["Llave registro"], keep="first")
-        base_dict = df_base.set_index("Llave registro").to_dict(orient="index")
+    registros = []
+    base_sin_identidad = []
+    for _, row in df_base.iterrows():
+        registro = registro_desde_row(row)
+        if registro["participantes"]:
+            registros.append(registro)
+        else:
+            base_sin_identidad.append(row.to_dict())
 
     nuevos = 0
     actualizados = 0
     omitidos = 0
 
     for _, row in df_nuevos.iterrows():
-        llave = limpiar_texto(row.get("Llave registro", ""))
-        if not llave:
+        nuevo = registro_desde_row(row)
+        if not nuevo["participantes"]:
             omitidos += 1
             continue
 
-        datos = row.to_dict()
-        if llave not in base_dict:
-            base_dict[llave] = datos
+        candidatos = [
+            idx
+            for idx, registro in enumerate(registros)
+            if registro["participantes"] & nuevo["participantes"]
+            and cursos_compatibles(registro["cursos"], nuevo["cursos"])
+        ]
+
+        if len(candidatos) == 1:
+            registro = registros[candidatos[0]]
+            if fusionar_registro(registro["datos"], nuevo["datos"]):
+                actualizados += 1
+            reconstruido = pd.Series(registro["datos"])
+            registro["participantes"] = set(llaves_participante(reconstruido))
+            registro["cursos"] = set(llaves_curso(reconstruido))
+        elif len(candidatos) > 1:
+            omitidos += 1
+        else:
+            registros.append(nuevo)
             nuevos += 1
-            continue
 
-        cambio = False
-        for col, valor_nuevo in datos.items():
-            if col == "Llave registro":
-                continue
-            valor_actual = base_dict[llave].get(col, "")
-            if valor_vacio(valor_actual) and not valor_vacio(valor_nuevo):
-                base_dict[llave][col] = valor_nuevo
-                cambio = True
-        if cambio:
-            actualizados += 1
+    filas = base_sin_identidad + [registro["datos"] for registro in registros]
+    if not filas:
+        return pd.DataFrame(columns=OUTPUT_COLUMNS), nuevos, actualizados, omitidos
 
-    if not base_dict:
-        return ordenar_columnas(base_sin_llave), nuevos, actualizados, omitidos
-
-    df_final = pd.DataFrame.from_dict(base_dict, orient="index").reset_index(drop=True)
-    if not base_sin_llave.empty:
-        df_final = pd.concat([base_sin_llave, df_final], ignore_index=True)
+    df_final = pd.DataFrame(filas)
+    df_final = construir_llaves(df_final)
+    df_final = validar_registros(df_final)
     df_final = ordenar_columnas(df_final)
-    con_llave_final = df_final["Llave registro"].map(limpiar_texto) != ""
-    df_final = pd.concat(
-        [
-            df_final[~con_llave_final],
-            df_final[con_llave_final].drop_duplicates(subset=["Llave registro"], keep="first"),
-        ],
-        ignore_index=True,
-    )
     return df_final, nuevos, actualizados, omitidos
 
 
@@ -636,24 +846,24 @@ def resumen_calidad(df):
     return total, duplicados, revisar, sin_llave
 
 
-st.title("SICE Educacion Continua")
-st.caption("Carga, homologacion y actualizacion de la base maestra de participantes")
+aplicar_estilos_institucionales()
+mostrar_encabezado()
 
 with st.sidebar:
-    st.header("Conexion")
+    st.header("Conexión")
     spreadsheet_id = st.text_input(
         "ID o URL del Google Sheet",
         help="Puedes pegar el ID o la URL completa de Google Sheets.",
     )
     nombre_hoja = st.text_input("Hoja de base maestra", value="Base_Datos")
     st.divider()
-    st.header("Carga")
+    st.header("Carga de datos")
     origen = st.selectbox(
         "Tipo de archivo",
         [
             "SII - reporte descargado",
             "Matriculados / grupo cerrado",
-            "Base maestra historica",
+            "Base maestra histórica",
             "Otro formato",
         ],
     )
@@ -728,7 +938,7 @@ if archivo:
     st.dataframe(df_nuevo, use_container_width=True, hide_index=True)
 
     if n_revisar:
-        with st.expander("Registros que requieren revision"):
+        with st.expander("Registros que requieren revisión"):
             columnas_revision = [
                 "Nombre",
                 "Paterno",
@@ -749,7 +959,7 @@ if archivo:
     )
 
     st.divider()
-    confirmar = st.button("Aplicar actualizacion a Google Sheets", type="primary")
+    confirmar = st.button("Aplicar actualización a Google Sheets", type="primary")
 
     if confirmar:
         with st.spinner("Actualizando base maestra..."):
@@ -769,3 +979,7 @@ if archivo:
         r3.metric("Omitidos sin llave", omitidos)
         r4.metric("Total final", len(df_final))
         st.dataframe(df_final, use_container_width=True, hide_index=True)
+
+
+
+
